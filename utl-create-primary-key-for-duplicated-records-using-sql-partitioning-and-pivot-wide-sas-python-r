@@ -1,0 +1,1554 @@
+%let pgm=utl-create-primary-key-for-duplicated-records-using-sql-partitionaling-and-pivot-wide-sas-python-r;
+
+Create primary key for duplicated records using sql partitionaling and pivot wide sas python r
+
+github
+https://tinyurl.com/3khm73b2
+https://github.com/rogerjdeangelis/utl-create-primary-key-for-duplicated-records-using-sql-partitionaling-and-pivot-wide-sas-python-r
+
+Duplicates cause all kinds of problems. Here ia way to deal with them
+in normalized(skinny) and non-normalized(transpose-fat) data structures using just sql.
+
+       SOLUTIONS (all sql)
+
+           1 sas primary key
+           2 sas hash primary key
+           3 r primary key
+           4 python primary key
+           5 sas pivot wide
+           6 r pivot wide
+           7 python pivot wide
+           8 related repos
+
+SQL partitioning has many applications, especially when pivoting tables and first x last x.
+
+stackoverflow r
+https://tinyurl.com/bd9fredh
+https://stackoverflow.com/questions/79002983/grouping-data-and-changing-parts-of-the-group
+
+/*               _     _
+ _ __  _ __ ___ | |__ | | ___ _ __ ___
+| `_ \| `__/ _ \| `_ \| |/ _ \ `_ ` _ \
+| |_) | | | (_) | |_) | |  __/ | | | | |
+| .__/|_|  \___/|_.__/|_|\___|_| |_| |_|
+|_|
+*/
+
+
+/**************************************************************************************************************************/
+/*                                   |                                                                                    */
+/* TWO PARTS                         |                                                                                    */
+/*                                   |                                                                                    */
+/* 1. ADD PRIMARY KEY TO DUP GROUPS  |                                                                                    */
+/* ================================  |                                                                                    */
+/*                                   |                                                                                    */
+/*           INPUT                   |                OUTPUT                                                              */
+/*                                   |                                                                                    */
+/*   SD1.HAVE total obs=7            |  Obs     NAM     SCORE    PARTITION                                                */
+/*                                   |                                                                                    */
+/*    Obs     NAM     SCORE          |   1     dave      128         1                                                    */
+/*                                   |   2     dave      128         2                                                    */
+/*     1     dave      128           |                                                                                    */
+/*     2     john      123           |   3     harry     130         1                                                    */
+/*     3     steve     111           |   4     harry     130         2                                                    */
+/*     4     dave      128           |                                                                                    */
+/*     5     harry     130           |   5     john      123         1                                                    */
+/*     6     harry     130           |   6     steve     111         1                                                    */
+/*     7     will      110           |   7     will      110         1                                                    */
+/*                                   |                                                                                    */
+/*                                   |                                                                                    */
+/*------------------------------------------------------------------------------------------------------------------------*/
+/*                                   |                                                                                    */
+/* 2. PIVOT WIDER                    |     NAM     SCORE1    SCORE2                                                       */
+/* ==============                    |                                                                                    */
+/*                                   |    dave       128       128                                                        */
+/*                                   |    harry      130       130                                                        */
+/*                                   |    john       123         .                                                        */
+/*                                   |    steve      111         .                                                        */
+/*                                   |    will       110         .                                                        */
+/*                                   |                                                                                    */
+/**************************************************************************************************************************/
+
+
+/*   _                   _
+/ | (_)_ __  _ __  _   _| |_
+| | | | `_ \| `_ \| | | | __|
+| | | | | | | |_) | |_| | |_
+|_| |_|_| |_| .__/ \__,_|\__|
+            |_|
+*/
+options validvarname=upcase;
+libname sd1 "d:/sd1";
+data sd1.have;
+  input nam$ score;
+cards4;
+dave    128
+john    123
+steve   111
+dave    128
+harry   130
+harry   130
+will    110
+;;;;
+run;quit;
+
+/**************************************************************************************************************************/
+/*                                                                                                                        */
+/* SD1.HAVE total obs=7                                                                                                   */
+/*                                                                                                                        */
+/*  Obs     NAM     SCORE                                                                                                 */
+/*                                                                                                                        */
+/*   1     dave      128                                                                                                  */
+/*   2     john      123                                                                                                  */
+/*   3     steve     111                                                                                                  */
+/*   4     dave      128                                                                                                  */
+/*   5     harry     130                                                                                                  */
+/*   6     harry     130                                                                                                  */
+/*   7     will      110                                                                                                  */
+/*                                                                                                                        */
+/**************************************************************************************************************************/
+/*                              _                              _
+/ |  ___  __ _ ___   _ __  _ __(_ )_ __ ___   __ _ _ __ _   _  | | _____ _   _
+| | / __|/ _` / __| | `_ \| `__| | `_ ` _ \ / _` | `__| | | | | |/ / _ \ | | |
+| | \__ \ (_| \__ \ | |_) | |  | | | | | | | (_| | |  | |_| | |   <  __/ |_| |
+|_| |___/\__,_|___/ | .__/|_|  |_|_| |_| |_|\__,_|_|   \__, | |_|\_\___|\__, |
+                    |_|                                |___/            |___/
+*/
+
+proc sql;
+  create
+     table want as
+  select
+     nam
+    ,score
+    ,partition
+  from
+    %sqlpartition(sd1.have,by=nam)
+;quit;
+
+
+/**************************************************************************************************************************/
+/*                                                                                                                        */
+/*  Obs     NAM     SCORE    PARTITION                                                                                    */
+/*                                                                                                                        */
+/*   1     dave      128         1                                                                                        */
+/*   2     dave      128         2                                                                                        */
+/*                                                                                                                        */
+/*   3     harry     130         1                                                                                        */
+/*   4     harry     130         2                                                                                        */
+/*                                                                                                                        */
+/*   5     john      123         1                                                                                        */
+/*   6     steve     111         1                                                                                        */
+/*   7     will      110         1                                                                                        */
+/*                                                                                                                        */
+/**************************************************************************************************************************/
+
+/*___                    _               _
+|___ \   ___  __ _ ___  | |__   __ _ ___| |__
+  __) | / __|/ _` / __| | `_ \ / _` / __| `_ \
+ / __/  \__ \ (_| \__ \ | | | | (_| \__ \ | | |
+|_____| |___/\__,_|___/ |_| |_|\__,_|___/_| |_|
+
+*/
+
+* no sort needed */
+
+data want;
+
+  set sd1.have;
+
+  if _n_ = 1 then do;
+    declare hash h();
+    h.definekey('nam');
+    h.definedata('nam','score');
+    h.definedone();
+  end;
+
+  rc = h.find();
+  if rc ne 0 then count = 0;
+  count + 1;
+  rc = h.replace();
+
+  seq_no = count;
+
+  output;
+run;
+
+proc print data=want;
+run;
+
+/**************************************************************************************************************************/
+/*                                                                                                                        */
+/*    NAM     SCORE    RC    COUNT    SEQ_NO                                                                              */
+/*                                                                                                                        */
+/*   dave      128      0      1         1                                                                                */
+/*   john      123      0      1         1                                                                                */
+/*   steve     111      0      1         1                                                                                */
+/*   dave      128      0      2         2                                                                                */
+/*   harry     130      0      1         1                                                                                */
+/*   harry     130      0      2         2                                                                                */
+/*   will      110      0      1         1                                                                                */
+/*                                                                                                                        */
+/**************************************************************************************************************************/
+
+/*____                     _                              _
+|___ /   _ __   _ __  _ __(_)_ __ ___   __ _ _ __ _   _  | | _____ _   _
+  |_ \  | `__| | `_ \| `__| | `_ ` _ \ / _` | `__| | | | | |/ / _ \ | | |
+ ___) | | |    | |_) | |  | | | | | | | (_| | |  | |_| | |   <  __/ |_| |
+|____/  |_|    | .__/|_|  |_|_| |_| |_|\__,_|_|   \__, | |_|\_\___|\__, |
+               |_|                                |___/            |___/
+*/
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(sqldf)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+print(have)
+want<-sqldf('
+   select
+     *
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   ')
+want
+fn_tosas9x(
+      inp    = want
+     ,outlib ="d:/sd1/"
+     ,outdsn ="rwant"
+     )
+;;;;
+%utl_r endx;
+
+libname sd1 "d:/sd1";
+proc print data=sd1.rwant;
+run;quit;
+
+/**************************************************************************************************************************/
+/*                             |                                                                                          */
+/*   R                         |               SAS                                                                        */
+/*                             |                                                                                          */
+/*   > want                    |                                                                                          */
+/*       nam score partition   |  ROWNAMES     NAM     SCORE    PARTITION                                                 */
+/*                             |                                                                                          */
+/*   1  dave   128         1   |      1       dave      128         1                                                     */
+/*   2  dave   128         2   |      2       dave      128         2                                                     */
+/*   3 harry   130         1   |      3       harry     130         1                                                     */
+/*   4 harry   130         2   |      4       harry     130         2                                                     */
+/*   5  john   123         1   |      5       john      123         1                                                     */
+/*   6 steve   111         1   |      6       steve     111         1                                                     */
+/*   7  will   110         1   |      7       will      110         1                                                     */
+/*                             |                                                                                          */
+/**************************************************************************************************************************/
+
+* save all this stupp in c:/oto/fn_python.py;
+
+filename ft15f001 "c:/oto/fn_python.py";
+parmcards4;
+import pyarrow.feather as feather;
+import tempfile;
+import pyperclip;
+import os;
+import sys;
+import subprocess;
+import time;
+import pandas as pd;
+import pyreadstat as ps;
+import numpy as np;
+from pandasql import sqldf;
+mysql = lambda q: sqldf(q, globals());
+from pandasql import PandaSQL;
+pdsql = PandaSQL(persist=True);
+sqlite3conn = next(pdsql.conn.gen).connection.connection;
+sqlite3conn.enable_load_extension(True);
+sqlite3conn.load_extension('c:/temp/libsqlitefunctions.dll');
+mysql = lambda q: sqldf(q, globals());
+exec(open('c:/oto/fn_tosas9x.py').read());
+;;;;
+run;quit;
+
+
+%utl_pybeginx;
+parmcards4;
+exec(open('c:/oto/fn_python.py').read())
+have, meta = ps.read_sas7bdat('d:/sd1/have.sas7bdat')
+print(have);
+want=pdsql('''
+   select
+     *
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   ''')
+print(want);
+fn_tosas9x(want,outlib='d:/sd1/',outdsn='pywant',timeest=3)
+;;;;
+%utl_pyendx;
+
+proc print data=sd1.pywant;
+run;quit;
+
+/**************************************************************************************************************************/
+/*                             |                                                                                          */
+/*                             |                                                                                          */
+/*  PYTHON                     |   SAS                                                                                    */
+/*                             |                                                                                          */
+/*       nam  score  partition |    NAM     SCORE    PARTITION                                                            */
+/*                             |                                                                                          */
+/*  0   dave  128.0          1 |   dave      128         1                                                                */
+/*  1   dave  128.0          2 |   dave      128         2                                                                */
+/*  2  harry  130.0          1 |   harry     130         1                                                                */
+/*  3  harry  130.0          2 |   harry     130         2                                                                */
+/*  4   john  123.0          1 |   john      123         1                                                                */
+/*  5  steve  111.0          1 |   steve     111         1                                                                */
+/*  6   will  110.0          1 |   will      110         1                                                                */
+/*                             |                                                                                          */
+/**************************************************************************************************************************/
+
+/*___                          _            _              _     _
+| ___|   ___  __ _ ___   _ __ (_)_   _____ | |_  __      _(_) __| | ___
+|___ \  / __|/ _` / __| | `_ \| \ \ / / _ \| __| \ \ /\ / / |/ _` |/ _ \
+ ___) | \__ \ (_| \__ \ | |_) | |\ V / (_) | |_   \ V  V /| | (_| |  __/
+|____/  |___/\__,_|___/ | .__/|_| \_/ \___/ \__|   \_/\_/ |_|\__,_|\___|
+                        |_|
+*/
+
+
+proc sql;
+  create
+     table seq as
+  select
+     nam
+    ,max(case when partition=1 then score else . end) as score1
+    ,max(case when partition=2 then score else . end) as score2
+  from
+    %sqlpartition(sd1.have,by=nam)
+  group
+    by nam
+;quit;
+
+/*         _
+ ___  __ _| |   __ _ _ __ _ __ __ _ _   _ ___
+/ __|/ _` | |  / _` | `__| `__/ _` | | | / __|
+\__ \ (_| | | | (_| | |  | | | (_| | |_| \__ \
+|___/\__, |_|  \__,_|_|  |_|  \__,_|\__, |___/
+        |_|                         |___/
+*/
+
+%array(_ary,values=1-2);
+
+proc sql;
+  create
+     table seq as
+  select
+     nam
+    ,%do_over(_ary,phrase=
+        max(case when partition=? then score else . end) as score?, between=comma
+     )
+  from
+    %sqlpartition(sd1.have,by=nam)
+  group
+    by nam
+;quit;
+
+/**************************************************************************************************************************/
+/*                                                                                                                        */
+/*  WORK SEQ total obs=5                                                                                                  */
+/*                                                                                                                        */
+/*  Obs     NAM     SCORE1    SCORE2                                                                                      */
+/*                                                                                                                        */
+/*   1     dave       128       128                                                                                       */
+/*   2     harry      130       130                                                                                       */
+/*   3     john       123         .                                                                                       */
+/*   4     steve      111         .                                                                                       */
+/*   5     will       110         .                                                                                       */
+/*                                                                                                                        */
+/**************************************************************************************************************************/
+
+/*__                  _            _              _     _
+ / /_    _ __   _ __ (_)_   _____ | |_  __      _(_) __| | ___
+| `_ \  | `__| | `_ \| \ \ / / _ \| __| \ \ /\ / / |/ _` |/ _ \
+| (_) | | |    | |_) | |\ V / (_) | |_   \ V  V /| | (_| |  __/
+ \___/  |_|    | .__/|_| \_/ \___/ \__|   \_/\_/ |_|\__,_|\___|
+               |_|
+*/
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(sqldf)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+print(have)
+want<-sqldf('
+   select
+      nam
+     ,max(case when partition=1 then score else NULL end) as score1
+     ,max(case when partition=2 then score else NULL end) as score2
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   group
+     by nam
+   ')
+want
+fn_tosas9x(
+      inp    = want
+     ,outlib ="d:/sd1/"
+     ,outdsn ="rwant"
+     )
+;;;;
+%utl_rendx;
+
+proc print data=sd1.rwant;
+run;quit;
+
+/**************************************************************************************************************************/
+/*                          |                                                                                             */
+/*  > want                  |                                                                                             */
+/*      nam score1 score2   |  ROWNAMES     NAM     SCORE1    SCORE2                                                      */
+/*                          |                                                                                             */
+/*  1  dave    128    128   |      1       dave       128       128                                                       */
+/*  2 harry    130    130   |      2       harry      130       130                                                       */
+/*  3  john    123     NA   |      3       john       123         .                                                       */
+/*  4 steve    111     NA   |      4       steve      111         .                                                       */
+/*  5  will    110     NA   |      5       will       110         .                                                       */
+/*                          |                                                                                             */
+/**************************************************************************************************************************/
+
+/*____               _   _                         _            _              _     _
+|___  |  _ __  _   _| |_| |__   ___  _ __    _ __ (_)_   _____ | |_  __      _(_) __| | ___
+   / /  | `_ \| | | | __| `_ \ / _ \| `_ \  | `_ \| \ \ / / _ \| __| \ \ /\ / / |/ _` |/ _ \
+  / /   | |_) | |_| | |_| | | | (_) | | | | | |_) | |\ V / (_) | |_   \ V  V /| | (_| |  __/
+ /_/    | .__/ \__, |\__|_| |_|\___/|_| |_| | .__/|_| \_/ \___/ \__|   \_/\_/ |_|\__,_|\___|
+        |_|    |___/                        |_|
+*/
+
+
+%utl_pybeginx;
+parmcards4;
+exec(open('c:/oto/fn_python.py').read())
+have, meta = ps.read_sas7bdat('d:/sd1/have.sas7bdat')
+print(have);
+want=pdsql('''
+   select
+      nam
+     ,max(case when partition=1 then score else NULL end) as score1
+     ,max(case when partition=2 then score else NULL end) as score2
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   group
+     by nam
+   ''')
+print(want);
+fn_tosas9x(want,outlib='d:/sd1/',outdsn='pywant',timeest=3)
+;;;;
+%utl_pyendx;
+
+proc print data=sd1.pywant;
+run;quit;
+
+/**************************************************************************************************************************/
+/*                             |                                                                                          */
+/* PYTHON                      |    SAS                                                                                   */
+/*                             |                                                                                          */
+/*       nam  score1  score2   |    NAM     SCORE1    SCORE2                                                              */
+/*                             |                                                                                          */
+/*  0   dave   128.0   128.0   |   dave       128       128                                                               */
+/*  1  harry   130.0   130.0   |   harry      130       130                                                               */
+/*  2   john   123.0     NaN   |   john       123         .                                                               */
+/*  3  steve   111.0     NaN   |   steve      111         .                                                               */
+/*  4   will   110.0     NaN   |   will       110         .                                                               */
+/*                             |                                                                                          */
+/**************************************************************************************************************************/
+
+/*___
+ ( _ )   _ __ ___ _ __   ___  ___
+ / _ \  | `__/ _ \ `_ \ / _ \/ __|
+| (_) | | | |  __/ |_) | (_) \__ \
+ \___/  |_|  \___| .__/ \___/|___/
+                 |_|
+*/
+
+https://github.com/rogerjdeangelis/utl-adding-sequence-numbers-and-partitions-in-SAS-sql-without-using-monotonic
+https://github.com/rogerjdeangelis/utl-find-first-n-observations-per-category-using-proc-sql-partitioning
+https://github.com/rogerjdeangelis/utl-macro-to-enable-sql-partitioning-by-groups-montonic-first-and-last-dot
+https://github.com/rogerjdeangelis/utl-pivot-long-pivot-wide-transpose-partitioning-sql-arrays-wps-r-python
+https://github.com/rogerjdeangelis/utl-pivot-transpose-by-id-using-wps-r-python-sql-using-partitioning
+https://github.com/rogerjdeangelis/utl-top-four-seasonal-precipitation-totals--european-cities-sql-partitions-in-wps-r-python
+https://github.com/rogerjdeangelis/utl-transpose-pivot-wide-using-sql-partitioning-in-wps-r-python
+https://github.com/rogerjdeangelis/utl-transposing-rows-to-columns-using-proc-sql-partitioning
+https://github.com/rogerjdeangelis/utl-transposing-words-into-sentences-using-sql-partitioning-in-r-and-python
+https://github.com/rogerjdeangelis/utl-using-sql-in-wps-r-python-select-the-four-youngest-male-and-female-students-partitioning
+
+/*              _
+  ___ _ __   __| |
+ / _ \ `_ \ / _` |
+|  __/ | | | (_| |
+ \___|_| |_|\__,_|
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(sqldf)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+print(have)
+want<-sqldf('
+   select
+      nam
+     ,max(case when partition=1 then score else NULL end) as score1
+     ,max(case when partition=2 then score else NULL end) as score2
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   group
+     by nam
+   ')
+want
+fn_tosas9x(
+      inp    = want
+     ,outlib ="d:/sd1/"
+     ,outdsn ="rwant"
+     )
+;;;;
+%utl_rendx;
+
+
+proc sql;
+  create
+     table seq as
+  select
+     nam
+    ,max(case when partition=1 then score else . end) as score1
+    ,max(case when partition=2 then score else . end) as score2
+  from
+    %sqlpartition(sd1.have,by=nam)
+  group
+    by nam
+;quit;
+
+
+ libname sd1 "d:/sd1";
+
+proc datasets lib=sd1 nolist nodetails;delete want; run;quit;
+
+%utl_submit_wps64x('
+options validvarname=any;
+libname sd1 "d:/sd1";
+proc sql;
+    create
+      table sd1.want as
+    select
+      nam
+      ,max(case when partition=1 then score else . end) as score1
+      ,max(case when partition=2 then score else . end) as score2
+   from (
+         select monotonic() as partition , nam, score from sd1.have where nam="A" union
+         select monotonic() as partition , nam, score from sd1.have where nam="B"
+        )
+   group
+        by nam
+;quit;
+');
+
+proc print data=sd1.want;
+run;quit;
+
+
+
+%utl_submit_wps64x('
+libname sd1 "d:/sd1";
+proc r;
+export data=sd1.have r=have;
+
+
+
+
+library(sqldf);
+want<-sqldf("
+   select
+      nam
+     ,max(case when partition=1 then score else NULL end) as score1
+     ,max(case when partition=2 then score else NULL end) as score2
+     ,max(case when partition=3 then score else NULL end) as score3
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   group
+     by nam;
+   ");
+want;
+endsubmit;
+import data=sd1.want r=want;
+run;quit;
+');
+
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(sqldf)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+print(have)
+want<-sqldf('
+   select
+      nam
+     ,max(case when partition=1 then score else NULL end) as score1
+     ,max(case when partition=2 then score else NULL end) as score2
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   group
+     by nam
+   ')
+want
+fn_tosas9x(
+      inp    = want
+     ,outlib ="d:/sd1/"
+     ,outdsn ="rwant"
+     )
+;;;;
+%utl_rendx;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(sqldf)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+print(have)
+want<-sqldf('
+   select
+      nam
+     ,*
+   from
+     ( select nam, score, row_number() OVER (PARTITION BY nam) as partition from have )
+   ')
+want
+fn_tosas9x(
+      inp    = want
+     ,outlib ="d:/sd1/"
+     ,outdsn ="rwant"
+     )
+;;;;
+%utl_rendx;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+proc sql;
+  create
+     table seq as
+  select
+     nam
+    ,partition
+    ,score
+  from
+    %sqlpartition(sd1.have,by=nam)
+;quit;
+
+
+
+
+
+
+proc sql;
+  create
+     table seq as
+  select
+     *
+  from
+   (select *, monotonic() as row_number from sd1.have)
+  group
+    by name, score
+;quit;
+
+proc sql;
+   create
+     table want as
+   select
+
+
+
+
+   from
+      (select *, monotonic() as row_number from sd1.have)
+   group
+      by nam, score
+;quit;
+
+%macro sqlPartitionx(data,by=);
+
+  (select
+     row_number
+    ,row_number - min(row_number) +1 as partition
+    ,*
+  from
+      (select *, monotonic() as row_number from from &data
+  group
+      by &by )
+
+%mend sqlPartitionx;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*/ /**************************************************************************************************************************/
+*/ /*
+*/ /*  WORK.SEQ total obs=7
+*/ /*
+*/ /*  Obs     NAM     PARTITION    SCORE
+*/ /*
+*/ /*   1     dave         1         128
+*/ /*   2     dave         2         128
+*/ /*   3     harry        1         130
+*/ /*   4     harry        2         130
+*/ /*   5     john         1         123
+*/ /*   6     steve        1         111
+*/ /*
+*/ /**************************************************************************************************************************/
+
+proc transpose data=seq out=seqx(drop=_name_);;
+  by nam score;
+  id partition;
+   var score;
+run;quit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+options validvarname=upcase;
+libname sd1 "d:/sd1";
+data sd1.have;
+  input  id$ subject$ time$ response$;
+cards4;
+X01 S01 D0 Y
+X02 S01 D1 Y
+X03 S01 D2 Y
+X04 S02 D0 N
+X05 S02 D2 N
+X06 S03 D0 Y
+X07 S04 D0 Y
+X08 S04 D2 Y
+X09 S05 D2 Y
+X10 S06 D2 N
+;;;;
+run;quit;
+
+
+
+mydf <- read.table(header = TRUE, text =
+
+options validvarname=upcase;
+libname sd1 "d:/sd1";
+data sd1.have;
+  input nam$ score;
+cards4;
+dave    128
+john    123
+steve   111
+dave    128
+harry   130
+harry   130
+will    110
+;;;;
+run;quit;
+
+proc sql;select distinct(nam) into :_name1- from sd1.have;quit;
+%let _namen=&sqlobs;
+
+proc sql;select max(cnt) into :_part from  (select count(nam) as cnt from sd1.have group by nam) ;quit;
+%let _namen=&sqlobs;
+%array(_part,values=1-&sqlobs)
+
+proc sql;select distinct(nam) into :_name1- from sd1.have;quit;
+
+%put &=_name1;  /*  _NAME1=A                                             ----*/
+%put &=_name2;  /*  _NAME2=B                                             ----*/
+
+%put &=_namen;  /*  _NAMEN=2                                             ----*/
+
+/*---- END SETUP                                                         ----*/
+
+proc sql;
+    create table want as select nam
+        %do_over(_part,phrase=%str(
+          ,max(case when partition=? then score else . end) as score?))
+    from
+        (%do_over(_name,phrase=%str(
+          select monotonic() as partition , nam, score from sd1.have where nam="?"), between=union ))
+    group by nam
+;quit;
+
+
+proc sql;
+  create
+     table seq as
+  select
+     *
+  from
+    %sqlpartition(sd1.have,by = nam)
+;quit;
+
+proc transpose data=seq out=seqx po;
+  by nam score;
+  id partition;
+   var score;
+run;quit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+library(dplyr)
+
+mydf |>
+  mutate(count = row_number(),
+         .by = c(name, id))
+#>    name  id count
+#> 1  dave 128     1
+#> 2  john 123     1
+#> 3 steve 111     1
+#> 4  dave 128     2
+#> 5 harry 130     1
+#> 6 harry 130     2
+#> 7  will  11     1
+
+
+
+https://github.com/rogerjdeangelis/utl-transpose-pivot-wide-using-sql-partitioning-in-wps-r-python
+https://github.com/rogerjdeangelis/utl_transpose_long_to_wide_with_sequential_matching_pairs
+
+
+proc sql;
+    create table want as select nam
+        %do_over(_score,phrase=%str(
+          ,max(case when partition=? then score else . end) as score?))
+    from
+        (%do_over(_name,phrase=%str(
+          select monotonic() as partition , nam, score from sd1.have where nam="?"), between=union ))
+    group by nam
+;quit;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ id subject time response selected
+1  X01     S01   D0        Y     X01 S01 D0 Y      Y
+2  X02     S01   D1        Y     X02 S01 D1 Y      N
+3  X03     S01   D2        Y     X03 S01 D2 Y      Y
+4  X04     S02   D0        N     X04 S02 D0 N      N
+5  X05     S02   D2        N     X05 S02 D2 N      N
+6  X06     S03   D0        Y     X06 S03 D0 Y      N
+7  X07     S04   D0        Y     X07 S04 D0 Y      Y
+8  X08     S04   D2        Y     X08 S04 D2 Y      Y
+9  X09     S05   D2        Y     X09 S05 D2 Y      N
+10 X10     S06   D2        N     X10 S06 D2 N      N
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(tidyverse)
+library(dplyr)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+raw.df <- data.frame(id = c("X01", "X02", "X03", "X04", "X05", "X06", "X07", "X08", "X09", "X10"),
+           subject = c("S01", "S01", "S01", "S02", "S02", "S03", "S04", "S04", "S05", "S06"),
+           time = c("D0", "D1", "D2", "D0", "D2", "D0", "D0", "D2", "D2", "D2"),
+           response = c("Y", "Y", "Y", "N", "N", "Y", "Y", "Y", "Y", "N"))
+final.df <- raw.df %>%
+  mutate(selected = case_when(time %in% c("D0", "D2") & response = "Y" ~ "Y",
+                              TRUE ~ "N"))
+raw.df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject) |>
+      mutate(selected = "Y")) |>
+  mutate(selected = coalesce(selected, "N"))
+;;;;
+%utl_rendx;
+
+proc sql;
+  create
+     table want as
+  select
+     distinct
+       r.time, r.subject
+  from
+    sd1.have as l left join sd1.have as r
+  on
+   r.time ne "D01" and r.response = "Y"
+   and l.subject = r.subject
+;quit;
+
+
+
+
+
+raw.df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject) |>
+      mutate(selected = "Y")) |>
+  mutate(selected = coalesce(selected, "N"))
+
+proc sql;
+  create
+     table want as
+  select
+
+
+  from
+    sd1.have as l left join sd1.have
+
+  where
+   l.time contains ("D0","D2") and time = "Y"
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(tidyverse)
+source("c:/oto/fn_tosas9x.R")
+raw_df<-read_sas("d:/sd1/have.sas7bdat")
+print(raw_df)
+res1<-raw_df |>
+  left_join(
+    raw.df |>
+      filter(TIME %in% c("D0", "D2"), RESPONSE== "Y") |>
+      distinct(TIME, SUBJECT)
+res1
+;;;;
+%utl_rendx;
+
+
+
+
+
+
+res2<-raw_df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject)
+res2
+res3<-raw_df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject)
+      mutate(selected = "Y"))
+res3
+res4<-raw_df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject) |>
+      mutate(selected = "Y")) |>
+  mutate(selected = coalesce(selected, "N"))
+res4
+fn_tosas9x(
+      inp    = raw_df
+     ,outlib ="d:/sd1/"
+     ,outdsn ="want"
+     )
+;;;;
+%utl_rendx;
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+library(tidyverse)
+library(dplyr)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+raw.df <- data.frame(id = c("X01", "X02", "X03", "X04", "X05", "X06", "X07", "X08", "X09", "X10"),
+           subject = c("S01", "S01", "S01", "S02", "S02", "S03", "S04", "S04", "S05", "S06"),
+           time = c("D0", "D1", "D2", "D0", "D2", "D0", "D0", "D2", "D2", "D2"),
+           response = c("Y", "Y", "Y", "N", "N", "Y", "Y", "Y", "Y", "N"))
+raw.df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject) |>
+      mutate(selected = "Y")) |>
+  mutate(selected = coalesce(selected, "N"))
+;;;;
+%utl_rendx;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+raw.df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject) |>
+      mutate(selected = "Y")) |>
+  mutate(selected = coalesce(selected, "N"))
+
+fn_tosas9x(
+      inp    = raw_df
+     ,outlib ="d:/sd1/"
+     ,outdsn ="want"
+     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%utl_rbeginx;
+parmcards4;
+library(dplyr)
+raw_df <- data.frame(id = c("X01", "X02", "X03", "X04", "X05", "X06", "X07", "X08", "X09", "X10"),
+           subject = c("S01", "S01", "S01", "S02", "S02", "S03", "S04", "S04", "S05", "S06"),
+           time = c("D0", "D1", "D2", "D0", "D2", "D0", "D0", "D2", "D2", "D2"),
+           response = c("Y", "Y", "Y", "N", "N", "Y", "Y", "Y", "Y", "N"))
+raw_df
+final_df <- raw_df %>% mutate(selected = case_when(time %in% c("D0", "D2") & response = "Y" ~ "Y",TRUE ~ "N"))
+final_df
+;;;;
+%utl_rendx;
+
+
+final_df %>%
+  filter(selected == "Y") %>%
+  group_by(subject) %>%
+  add_count() %>% ungroup() %>%
+  mutate(n = if_else(n == 2, "Include", "Exclude")) %>%
+  dplyr::rename(`paired` = n)
+;;;;
+%utl_rendx;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+raw.df |>
+  left_join(
+    raw.df |>
+      filter(time %in% c("D0", "D2"), response == "Y") |>
+      distinct(time, subject) |>
+      filter(n() == 2, .by = subject) |>
+      mutate(selected = "Y")) |>
+  mutate(selected = coalesce(selected, "N"))
+
+
+
+
+
+raw.df <- data.frame(id = c("X01", "X02", "X03", "X04", "X05", "X06", "X07", "X08", "X09", "X10"),
+           subject = c("S01", "S01", "S01", "S02", "S02", "S03", "S04", "S04", "S05", "S06"),
+           time = c("D0", "D1", "D2", "D0", "D2", "D0", "D0", "D2", "D2", "D2"),
+           response = c("Y", "Y", "Y", "N", "N", "Y", "Y", "Y", "Y", "N"))
+
+
+
+options validvarname=upcase;
+libname sd1 "d:/sd1";
+data sd1.have;
+
+
+
+%utl_rbeginx;
+parmcards4;
+library(haven)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+print(have)
+raw_df <- data.frame(id = c("X01", "X02", "X03", "X04", "X05", "X06", "X07", "X08", "X09", "X10"),
+           subject = c("S01", "S01", "S01", "S02", "S02", "S03", "S04", "S04", "S05", "S06"),
+           time = c("D0", "D1", "D2", "D0", "D2", "D0", "D0", "D2", "D2", "D2"),
+           response = c("Y", "Y", "Y", "N", "N", "Y", "Y", "Y", "Y", "N"))
+raw_df;
+fn_tosas9x(
+      inp    = raw_df
+     ,outlib ="d:/sd1/"
+     ,outdsn ="want"
+     )
+;;;;
+%utl_rendx;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+%let pgm=utl-plotting-significant-p-values-for-all-pairwise-treatment-comparisons-r-violin-graph;
+
+Plotting significant p values for all pairwise treatment comparisons r graph violin graph;
+
+
+
+ https://tinyurl.com/bdcuy5rx
+ https://github.com/rogerjdeangelis/utl-plotting-significant-p-values-for-all-pairwise-treatment-comparisons-r-violin-graph/blob/main/pvals.pdf
+
+ Solution by JPSmith
+ https://stackoverflow.com/users/12109788/jpsmith
+
+ stackoverflow R
+ https://tinyurl.com/ttajjxzn
+ https://stackoverflow.com/questions/79003181/calculating-pairwise-p-values-for-multiple-variables-in-r
+
+/*               _     _
+ _ __  _ __ ___ | |__ | | ___ _ __ ___
+| `_ \| `__/ _ \| `_ \| |/ _ \ `_ ` _ \
+| |_) | | | (_) | |_) | |  __/ | | | | |
+| .__/|_|  \___/|_.__/|_|\___|_| |_| |_|
+|_|
+*/
+
+/**************************************************************************************************************************/
+/*                                                                                                                        */
+/* CREATE A GRAPH SIIMILAR TO THIS                                                                                        */
+/*                                                                                                                        */
+/* IF YOU LOOK CLOSELY YOU CAN SEE UNIFORM DISTRIBUTIONS                                                                  */
+/*                                                                                                                        */
+/* Pairwise test Games-Howell significant Bars                                                                            */
+/*                                                                                                                        */
+/* Note the A-B p-value is not shown because it is not significant                                                        */
+/*                                                                                                                        */
+/*         FWelch(2, 192.73) = 11.38, p = 2.13e-05  Wp2 = 0.10, CI95% [0.04, 1.00], nobs = 300                            */
+/*                                                                                                                        */
+/*                                     DRUG                                                                               */
+/*                 A                     B                     C                                                          */
+/*               n=100                 n=100                 n=100                                                        */
+/*  RESULT   -----+--------------------- +--------------------+--------------------                                       */
+/*           |                                                                                                            */
+/*           |                   p-holm-adj=0.0002                                 |                                      */
+/*           |     _____________________________________________                   |                                      */
+/*       160 +     |                                           |                   + 160                                  */
+/*           |         p-holm-adj=0.006                                            |                                      */
+/*           |     ________________________                                        |                                      */
+/*           |     |                      |                    |     14 5567       |                                      */
+/*       140 +                                                 |     14 344        + 140                                  */
+/*           |                                                 |     13 789        |                                      */
+/*           |                                                 |     13 01222      |                                      */
+/*           |                                                 |     12 5          |                                      */
+/*       120 +                            |    12 233          |     12 0123       + 120                                  */
+/*           |                            |    11 77899        |     11 68         |                                      */
+/*           |        STEM LEAF           |    11 11344     +-----+  11 034        |                                      */
+/*           |                            |    10 55689     |     |  10 55999      |                                      */
+/*       100 +                            |    10 3         |     |  10 111        + 100                                  */
+/*           |     |     9 56689          |     9 8         |     |   9 79         |                                      */
+/*           |     |     9 0004        +-----+  9 02233     |     |   9 03         |                                      */
+/*           |     |     8 689999      |     |  8 69        |     |   8 69         |                                      */
+/*        80 +     |     8 00111       |     |  8 112244    |  73 |   8 0124       +  80                                  */
+/*           |  +-----+  7 5568999     |     |  7 567779    |  +  |   7 577        |                                      */
+/*           |  |     |  7 11          |  64 |  7 112334    *-----*   7 0122       |                                      */
+/*           |  |     |  6 56677899    *--+--*  6 5679      |     |   6 6          |                                      */
+/*        60 +  |     |  6 134         |     |  6 00123     |     |   6 000114     +  60                                  */
+/*           |  |  50 |  5 5679        |     |  5 568       |     |   5 5999       |                                      */
+/*           |  |  +  |  5 134         |     |  5 11112     |     |   5 023        |                                      */
+/*           |  *-----*  4 5567788     |     |  4 67789     |     |   4 57         |                                      */
+/*        40 +  |     |  4 1112344     +-----+  4 00244     |     |   4 023        +  40                                  */
+/*           |  |     |  3 57788          |     3 8899      +-----+   3 6899       |                                      */
+/*           |  |     |  3 2234           |     3 0113334      |      3 02344      |                                      */
+/*           |  +-----+  2 57799          |     2 77789        |      2 55666      |                                      */
+/*        20 +     |     2 122334         |     2 33           |      2 13         +  20                                  */
+/*           |     |     1 5589           |     1 88899        |      1 556        |                                      */
+/*           |     |     1 00123344       |     1 014          |      1 0111       |                                      */
+/*           |     |     0 5599           |     0 8            |      0 78899      |                                      */
+/*         0 +     |     0 024            |     0 1            |      0 13         +   0                                  */
+/*            -----+----------------------+--------------------+--------------------                                      */
+/*      DRUG       A                      B                    C                                                          */
+/*               n=100                  n=100                 n=100                                                       */
+/*                                                                                                                        */
+/*                                      DRUG                                                                              */
+/*                                                                                                                        */
+/**************************************************************************************************************************/
+
+/*                   _
+(_)_ __  _ __  _   _| |_
+| | `_ \| `_ \| | | | __|
+| | | | | |_) | |_| | |_
+|_|_| |_| .__/ \__,_|\__|
+        |_|
+*/
+data sd1.have;
+options validvarname=upcase;
+libname sd1 "d:/sd1";
+data sd1.have;
+  input drug $ result @@;
+cards4;
+A 029 A 079 A 041 A 088 A 094 A 005 A 053 A 089 A 055 A 046 A 096 A 045 A 068 A 057
+A 010 A 090 A 025 A 004 A 033 A 095 A 089 A 069 A 064 A 099 A 066 A 071 A 054 A 059
+A 029 A 015 A 096 A 090 A 069 A 080 A 002 A 048 A 076 A 022 A 032 A 023 A 014 A 041
+A 041 A 037 A 015 A 014 A 023 A 047 A 027 A 086 A 005 A 044 A 080 A 012 A 056 A 021
+A 013 A 075 A 090 A 037 A 067 A 009 A 038 A 027 A 081 A 045 A 081 A 081 A 079 A 044
+A 075 A 063 A 071 A 000 A 048 A 022 A 038 A 061 A 035 A 011 A 024 A 067 A 042 A 079
+A 010 A 043 A 098 A 089 A 089 A 018 A 013 A 065 A 034 A 066 A 032 A 019 A 078 A 009
+A 047 A 051 B 075 B 042 B 061 B 119 B 060 B 111 B 114 B 076 B 051 B 018 B 117 B 038
+B 008 B 118 B 090 B 018 B 069 B 119 B 073 B 051 B 081 B 040 B 038 B 027 B 046 B 123
+B 019 B 011 B 018 B 086 B 077 B 111 B 084 B 092 B 065 B 082 B 103 B 098 B 122 B 055
+B 039 B 051 B 001 B 023 B 105 B 029 B 030 B 010 B 031 B 092 B 106 B 062 B 048 B 031
+B 014 B 049 B 071 B 027 B 056 B 027 B 063 B 044 B 081 B 047 B 044 B 067 B 093 B 028
+B 052 B 033 B 079 B 023 B 108 B 093 B 084 B 077 B 047 B 066 B 109 B 073 B 105 B 039
+B 089 B 033 B 074 B 060 B 033 B 071 B 114 B 113 B 034 B 040 B 123 B 077 B 117 B 058
+B 051 B 082 B 019 B 072 C 036 C 144 C 090 C 077 C 060 C 132 C 055 C 043 C 026 C 026
+C 072 C 038 C 032 C 101 C 007 C 105 C 053 C 061 C 123 C 138 C 042 C 144 C 109 C 103
+C 008 C 059 C 072 C 084 C 105 C 137 C 093 C 064 C 081 C 009 C 039 C 060 C 030 C 125
+C 023 C 121 C 082 C 099 C 026 C 095 C 047 C 109 C 060 C 145 C 145 C 109 C 039 C 033
+C 089 C 040 C 080 C 118 C 025 C 061 C 071 C 130 C 139 C 132 C 101 C 143 C 077 C 086
+C 050 C 052 C 003 C 075 C 131 C 001 C 011 C 025 C 116 C 110 C 146 C 070 C 011 C 097
+C 114 C 021 C 059 C 034 C 009 C 059 C 010 C 034 C 008 C 101 C 045 C 015 C 011 C 132
+C 113 C 122 C 147 C 016 C 015 C 120
+;;;;
+run;quit;
+
+/**************************************************************************************************************************/
+/*                                                                                                                        */
+/*    SD1.HAVE total obs=300                                                                                              */
+/*                                                                                                                        */
+/*   Obs    DRUG    RESULT                                                                                                */
+/*                                                                                                                        */
+/*     1     A        29                                                                                                  */
+/*     2     A        79                                                                                                  */
+/*     3     A        41                                                                                                  */
+/*     4     A        88                                                                                                  */
+/*     5     A        94                                                                                                  */
+/*     ....                                                                                                               */
+/*                                                                                                                        */
+/*   296     C        122                                                                                                 */
+/*   297     C        147                                                                                                 */
+/*   298     C         16                                                                                                 */
+/*   299     C         15                                                                                                 */
+/*   300     C        120                                                                                                 */
+/*                                                                                                                        */
+/**************************************************************************************************************************/
+
+
+%utl_rbeginx;
+parmcards4;
+library(ggplot2)
+library(ggstatsplot)
+library(haven)
+source("c:/oto/fn_tosas9x.R")
+have<-read_sas("d:/sd1/have.sas7bdat")
+set.seed(123)
+have <- data.frame(Drug = c(rep("A", 100), rep("B", 100), rep("C", 100)),
+      Result = c(runif(100), runif(100, max = 1.25), runif(100, max = 1.5)))
+pdf("d:/pdf/pvals.pdf")
+ggbetweenstats(data = have, x = Drug, y = Result)
+pdf()
+;;;;
+%utl_rendx;
+
+/*              _
+  ___ _ __   __| |
+ / _ \ `_ \ / _` |
+|  __/ | | | (_| |
+ \___|_| |_|\__,_|
+
+*/
+*/ /**************************************************************************************************************************/
+*/ /*
+*/ /*  WORK.SEQ total obs=7
+*/ /*
+*/ /*  Obs     NAM     PARTITION    SCORE
+*/ /*
+*/ /*   1     dave         1         128
+*/ /*   2     dave         2         128
+*/ /*   3     harry        1         130
+*/ /*   4     harry        2         130
+*/ /*   5     john         1         123
+*/ /*   6     steve        1         111
+*/ /*
+*/ /**************************************************************************************************************************/
